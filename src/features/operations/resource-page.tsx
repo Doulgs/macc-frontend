@@ -2,11 +2,13 @@
 import Link from "next/link";
 import { useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { ArrowLeftRight, Filter, Plus, Search } from "lucide-react";
+import { ArrowLeftRight, Plus, Search } from "lucide-react";
 import { PageHeading } from "@/components/layout/page-heading";
+import { SearchInput } from "@/components/ui/search-input";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/fields";
-import { Dialog } from "@/components/ui/dialog";
+import { ModernSelect } from "@/components/ui/modern-select";
+import { FilterPopover } from "@/components/ui/filter-popover";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/feedback";
 import { normalizePage, type ApiPage, type ApiRow } from "@/lib/api";
 import { useScopedQuery, useWorkspace } from "@/lib/workspace";
@@ -94,7 +96,11 @@ export function ResourcePage({ resource, initialCreate, queryFilters }: { resour
     defaults: type ? { type } : undefined,
     onSave: row => { if (row?.id && spec.detailRoute && (resource === "budgets" || resource === "sales")) router.push(spec.detailRoute + "/" + row.id); },
   });
-  const [editor, setEditor] = useState<Editor | undefined>(() => allowCreate && initialCreate ? createEditor(initialCreate) : undefined);
+  const transferEditor: Editor = { title: "Nova transferência", path: "/transfers", fields: transferFields, submitLabel: "Transferir" };
+  const [editor, setEditor] = useState<Editor | undefined>(() => {
+    if (initialCreate === "transfer" && resource === "accounts") return permitted && can("transfers.create") ? transferEditor : undefined;
+    return allowCreate && initialCreate ? createEditor(initialCreate) : undefined;
+  });
   const params = {
     page, size: 25, ...populated(filters),
     ...(sort ? { sort } : {}),
@@ -127,9 +133,9 @@ export function ResourcePage({ resource, initialCreate, queryFilters }: { resour
   }
 
   const filterForm = <form className="filter-bar" onSubmit={apply}>
-    <Field label="Buscar">{props => <input {...props} className="input" type="search" maxLength={160} placeholder="Nome ou descrição" value={draft.q} onChange={e => setDraft({ ...draft, q: e.target.value })} />}</Field>
-    {spec.statuses && <Field label="Situação">{props => <select {...props} className="input" value={draft.status} onChange={e => setDraft({ ...draft, status: e.target.value })}><option value="">Todas</option>{spec.statuses?.map(option => <option value={option.value} key={option.value}>{option.label}</option>)}</select>}</Field>}
-    {spec.typeFilter && <Field label="Tipo">{props => <select {...props} className="input" value={draft.type} onChange={e => setDraft({ ...draft, type: e.target.value })}><option value="">Todos</option>{spec.typeFilter?.map(option => <option value={option.value} key={option.value}>{option.label}</option>)}</select>}</Field>}
+    <Field label="Buscar">{props => <SearchInput {...props} maxLength={160} placeholder="Nome ou descrição" value={draft.q} onChange={e => setDraft({ ...draft, q: e.target.value })} />}</Field>
+    {spec.statuses && <Field label="Situação">{props => <ModernSelect {...props} className="input" value={draft.status} onValueChange={e => setDraft({ ...draft, status: e })}><option value="">Todas</option>{spec.statuses?.map(option => <option value={option.value} key={option.value}>{option.label}</option>)}</ModernSelect>}</Field>}
+    {spec.typeFilter && <Field label="Tipo">{props => <ModernSelect {...props} className="input" value={draft.type} onValueChange={e => setDraft({ ...draft, type: e })}><option value="">Todos</option>{spec.typeFilter?.map(option => <option value={option.value} key={option.value}>{option.label}</option>)}</ModernSelect>}</Field>}
     {spec.dateFilter && (["startDate", "endDate"] as const).map((key, index) => <Field key={key} label={index ? "Até" : "De"}>{props => <input {...props} type="date" className="input" value={draft[key]} onChange={e => setDraft({ ...draft, [key]: e.target.value })} />}</Field>)}
     {spec.accountFilter && <ResourceField spec={{ key: "financialAccountId", label: "Conta", type: "select", resource: "/financial-accounts" }} value={draft.financialAccountId} onChange={value => setDraft({ ...draft, financialAccountId: value })} />}
     {spec.categoryFilter && <ResourceField spec={{ key: "categoryId", label: "Categoria", type: "select", resource: "/financial-categories" }} value={draft.categoryId} onChange={value => setDraft({ ...draft, categoryId: value })} />}
@@ -139,16 +145,11 @@ export function ResourcePage({ resource, initialCreate, queryFilters }: { resour
   </form>;
   return <>
     <PageHeading eyebrow={spec.group} title={spec.title} subtitle={spec.subtitle} actions={<>
-      {permitted && <Button variant="outline" className="mobile-only" onClick={() => setFilterOpen(true)}><Filter size={16} /> Filtros</Button>}
-      {resource === "accounts" && can("transfers.create") && <Button variant="outline" onClick={() => setEditor({ title: "Nova transferência", path: "/transfers", fields: transferFields, submitLabel: "Transferir" })}><ArrowLeftRight size={17} /> Transferir</Button>}
+      {permitted && <FilterPopover open={filterOpen} count={Object.keys(populated(filters)).length} onOpenChange={open => { if (open) setDraft(filters); setFilterOpen(open); }}>{filterForm}</FilterPopover>}
+      {resource === "accounts" && can("transfers.create") && <Button variant="outline" onClick={() => setEditor(transferEditor)}><ArrowLeftRight size={17} /> Transferir</Button>}
       {allowCreate && <Button onClick={() => setEditor(createEditor())}><Plus size={18} /> {spec.createLabel}</Button>}
     </>} />
-    {permitted && ["payables", "receivables"].includes(resource) && <div className="obligation-tabs" aria-label="Situação da conta">
-      {[{ value: "", label: "Todas" }, ...(spec.statuses ?? [])].map(item => <Button key={item.value} size="small" variant={filters.status === item.value ? "primary" : "outline"}
-        aria-pressed={filters.status === item.value} onClick={() => selectFilters({ ...filters, status: item.value })}>{item.label}</Button>)}
-    </div>}
     <section className="panel">
-      {permitted && <div className="desktop-filter">{filterForm}</div>}
       {!permitted ? <EmptyState title="Acesso restrito" detail="Seu papel neste workspace não permite consultar estes dados." /> :
         query.isPending ? <LoadingState /> : query.isError ? <ErrorState error={query.error} retry={() => void query.refetch()} /> :
           !result?.items.length ? <EmptyState title={hasFilters ? "Nenhum resultado para estes filtros" : "Nenhum registro neste workspace"}
@@ -162,7 +163,6 @@ export function ResourcePage({ resource, initialCreate, queryFilters }: { resour
         <Button variant="outline" size="small" disabled={page + 1 >= result.totalPages} onClick={() => setPage(page + 1)}>Próxima</Button>
       </div>}
     </section>
-    {filterOpen && <Dialog open onOpenChange={() => setFilterOpen(false)} title="Filtrar registros">{filterForm}</Dialog>}
     {editor && <ResourceForm key={company.id + editor.path + editor.title} {...editor} onClose={() => setEditor(undefined)} />}
   </>;
 }

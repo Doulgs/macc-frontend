@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -9,6 +9,7 @@ import {
   LogOut, Menu, Plus, Search, X,
 } from "lucide-react";
 import { toast } from "sonner";
+import { SearchInput } from "@/components/ui/search-input";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/feedback";
@@ -143,11 +144,18 @@ function Frame({ children, company, logout }: { children: React.ReactNode; compa
   const { session, can, feature } = useWorkspace();
   const [mobile, setMobile] = useState(false);
   const [search, setSearch] = useState<string | null>(null);
+  const surface = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    surface.current?.scrollTo({ top: 0 });
+  }, [pathname]);
+
   const collapsed = usePreferences(state => state.collapsed);
   const toggleCollapsed = usePreferences(state => state.toggleCollapsed);
   const groups = visibleNavigation(can, feature);
   const links = groups.flatMap(group => group.links);
-  const page = links.find(item => pathname.startsWith(item.href))?.label ?? "Workspace";
+  const page = links.find(item => pathname === item.href || pathname.startsWith(item.href + "/"))?.label
+    ?? (pathname === "/notificacoes" ? "Notificações" : "Workspace");
   const initials = session.user.fullName.trim().split(/\s+/).slice(0, 2).map(name => name[0]).join("").toUpperCase();
   function sidebarContent(compact: boolean, isMobile: boolean) {
     return <>
@@ -174,7 +182,7 @@ function Frame({ children, company, logout }: { children: React.ReactNode; compa
   }
   return <div className={cn("app-frame", collapsed && "is-collapsed")}>
     <a href="#main-content" className="skip-link">Ir para conteúdo</a>
-    <aside className="sidebar desktop-sidebar">{sidebarContent(collapsed, false)}</aside>
+    <aside id="desktop-sidebar" className="sidebar desktop-sidebar">{sidebarContent(collapsed, false)}</aside>
     <Sheet.Root open={mobile} onOpenChange={setMobile}>
       <Sheet.Portal>
         <Sheet.Overlay className="mobile-overlay" />
@@ -183,24 +191,33 @@ function Frame({ children, company, logout }: { children: React.ReactNode; compa
           {sidebarContent(false, true)}
         </Sheet.Content>
       </Sheet.Portal>
-    <div className="app-main">
-      <header className="app-header">
-        <div className="header-left">
-          <Sheet.Trigger asChild><Button variant="ghost" size="icon" className="mobile-only" aria-label="Abrir menu"><Menu size={20} /></Button></Sheet.Trigger>
-          <Button variant="ghost" size="icon" className="desktop-only" aria-label={collapsed ? "Expandir menu" : "Recolher menu"} onClick={toggleCollapsed}>{collapsed ? <ChevronsRight size={18} /> : <ChevronsLeft size={18} />}</Button>
-          <div className="breadcrumb"><span>Workspace</span><ChevronDown size={14} /><strong>{page}</strong></div>
-        </div>
-        <div className="header-right">
-          <Button variant="outline" size="small" className="search-trigger" aria-label="Buscar páginas" onClick={() => setSearch("")}><Search size={16} /><span>Buscar página</span></Button>
-          <Button asChild variant="ghost" size="icon"><Link href="/notificacoes" aria-label="Notificações"><Bell size={19} /></Link></Button>
-          <Link href="/configuracoes/aparencia" className="avatar" aria-label="Preferências">{initials}</Link>
-        </div>
-      </header>
-      <main id="main-content" className="app-content" tabIndex={-1}>{children}</main>
-    </div>
+      <div className="app-main">
+        <header className="app-header">
+          <div className="header-left">
+            <Sheet.Trigger asChild><Button variant="ghost" size="icon" className="mobile-only" aria-label="Abrir menu"><Menu size={20} /></Button></Sheet.Trigger>
+            <Button variant="ghost" size="icon" className="desktop-only" aria-label={collapsed ? "Expandir menu" : "Recolher menu"} aria-expanded={!collapsed} aria-controls="desktop-sidebar" onClick={toggleCollapsed}>{collapsed ? <ChevronsRight size={18} /> : <ChevronsLeft size={18} />}</Button>
+            <Button variant="outline" className="search-trigger" aria-label="Buscar páginas" onClick={() => setSearch("")}><Search size={17} /><span>Buscar página</span></Button>
+            <span className="header-page">{page}</span>
+          </div>
+          <div className="header-right">
+            <Button asChild variant="ghost" size="icon"><Link href="/notificacoes" aria-label="Notificações"><Bell size={19} /></Link></Button>
+            <DropdownMenu.Root>
+              <DropdownMenu.Trigger className="header-profile" aria-label="Menu da conta"><span className="avatar">{initials}</span><span>{session.user.fullName}</span><ChevronDown size={14} /></DropdownMenu.Trigger>
+              <DropdownMenu.Portal><DropdownMenu.Content className="dropdown-content" align="end" sideOffset={8}>
+                <DropdownMenu.Label className="dropdown-label">{session.user.fullName}</DropdownMenu.Label>
+                <DropdownMenu.Item asChild className="dropdown-item"><Link href="/configuracoes/aparencia">Preferências</Link></DropdownMenu.Item>
+                <DropdownMenu.Item className="dropdown-item" onSelect={() => void logout()}><LogOut size={16} /> Sair</DropdownMenu.Item>
+              </DropdownMenu.Content></DropdownMenu.Portal>
+            </DropdownMenu.Root>
+          </div>
+        </header>
+        <main id="main-content" ref={surface} className="app-surface" tabIndex={-1}>
+          <div className="app-content">{children}</div>
+        </main>
+      </div>
     </Sheet.Root>
     <Dialog open={search !== null} title="Buscar página" onOpenChange={open => { if (!open) setSearch(null); }}>
-      <input className="input" aria-label="Nome da página" placeholder="Ex.: contas a pagar" value={search ?? ""} onChange={event => setSearch(event.target.value)} />
+      <SearchInput aria-label="Nome da página" placeholder="Ex.: contas a pagar" value={search ?? ""} onChange={event => setSearch(event.target.value)} />
       <div className="search-results">{links.filter(item => item.label.toLowerCase().includes(search?.trim().toLowerCase() ?? "")).map(item =>
         <Link href={item.href} key={item.href} onClick={() => setSearch(null)}>{item.label}</Link>,
       )}</div>

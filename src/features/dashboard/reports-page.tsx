@@ -1,19 +1,19 @@
 "use client";
 import { useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
 import Decimal from "decimal.js";
 import { Download, FileChartColumn } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeading } from "@/components/layout/page-heading";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/fields";
+import { ModernSelect } from "@/components/ui/modern-select";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/feedback";
 import { api, companyHeaders, errorMessage, type ApiRow } from "@/lib/api";
 import { dateLabel, money } from "@/lib/utils";
 import { useScopedQuery, useWorkspace } from "@/lib/workspace";
 import { EntityTable } from "@/features/operations/entity-table";
 import type { ColumnSpec } from "@/features/operations/definitions";
-import { PeriodPicker, resolvePeriod } from "./period-picker";
+import { PeriodFilters, resolvePeriod } from "./period-picker";
 
 const reportTypes = {
   cashflow: { label: "Fluxo de caixa", columns: [
@@ -42,15 +42,16 @@ const isReport = (value: unknown): value is ReportKey => typeof value === "strin
 
 export function ReportsPage({ query }: { query: Record<string, unknown> }) {
   const { can, company, feature } = useWorkspace();
-  const router = useRouter();
-  const pathname = usePathname();
   const [exporting, setExporting] = useState(false);
-  const [page, setPage] = useState(0);
+  const [pagination, setPagination] = useState({ key: "", page: 0 });
   const financial = can("financial.read") && feature("FINANCIAL_CORE");
   const commercial = can("sales.read") && feature("SALES");
   const available = (Object.keys(reportTypes) as ReportKey[]).filter(key => key.startsWith("sales") ? commercial : financial);
   const report = isReport(query.relatorio) && available.includes(query.relatorio) ? query.relatorio : available[0] ?? "cashflow";
   const period = resolvePeriod(query, company.timezone);
+  const paginationKey = [company.id, report, period.startDate, period.endDate].join(":");
+  const page = pagination.key === paginationKey ? pagination.page : 0;
+  const setPage = (next: number) => setPagination({ key: paginationKey, page: next });
   const allowed = can("reports.read") && feature("ADVANCED_REPORTS") && available.length > 0;
   const result = useScopedQuery<Record<string, unknown>[]>("/reports/" + report, period, { enabled: allowed });
   const config = reportTypes[report];
@@ -79,15 +80,12 @@ export function ReportsPage({ query }: { query: Record<string, unknown> }) {
   const sum = (key: "income" | "expense") => grouped.reduce((value, row) => value.plus(String(row[key] ?? "0")), new Decimal(0));
   return <>
     <PageHeading eyebrow="Inteligência" title="Relatórios" subtitle="Consulte dados do workspace e exporte os resultados filtrados."
-      actions={allowed && can("reports.export") && <Button onClick={() => void exportReport()} disabled={exporting}><Download size={17} /> {exporting ? "Exportando…" : "Exportar CSV"}</Button>} />
+      actions={allowed && <><PeriodFilters initial={period} timezone={company.timezone} extra={{ name: "relatorio", value: report }}>
+        {(value, onChange) => <Field label="Relatório">{props => <ModernSelect {...props} value={value} onValueChange={onChange}>
+          {available.map(key => <option value={key} key={key}>{reportTypes[key].label}</option>)}
+        </ModernSelect>}</Field>}
+      </PeriodFilters>{can("reports.export") && <Button onClick={() => void exportReport()} disabled={exporting}><Download size={17} /> {exporting ? "Exportando…" : "Exportar CSV"}</Button>}</>} />
     {!allowed ? <section className="panel"><EmptyState title="Acesso restrito" detail="Seu workspace não tem acesso aos relatórios." /></section> : <>
-      <div className="panel dashboard-filter">
-        <Field label="Relatório">{props => <select {...props} className="input" value={report} onChange={event => {
-          setPage(0);
-          router.replace(pathname + "?" + new URLSearchParams({ ...period, relatorio: event.target.value }), { scroll: false });
-        }}>{available.map(key => <option value={key} key={key}>{reportTypes[key].label}</option>)}</select>}</Field>
-        <PeriodPicker key={period.startDate + period.endDate} initial={period} timezone={company.timezone} extra={{ relatorio: report }} />
-      </div>
       <section className="panel">
         <div className="panel-title"><div><h2>{config.label}</h2><p>{dateLabel(period.startDate)} a {dateLabel(period.endDate)} · {company.currency}
           {result.dataUpdatedAt ? " · Gerado em " + new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short", timeZone: company.timezone }).format(result.dataUpdatedAt) : ""}</p></div><FileChartColumn size={21} aria-hidden="true" /></div>

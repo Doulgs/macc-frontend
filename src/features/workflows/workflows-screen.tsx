@@ -9,6 +9,7 @@ import { PageHeading } from "@/components/layout/page-heading";
 import { Button } from "@/components/ui/button";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/feedback";
 import { Field } from "@/components/ui/fields";
+import { ModernSelect } from "@/components/ui/modern-select";
 import { api, companyHeaders, errorMessage } from "@/lib/api";
 import { useRefreshWorkspace, useScopedQuery, useWorkspace } from "@/lib/workspace";
 import "@xyflow/react/dist/style.css";
@@ -208,20 +209,20 @@ function Editor({ initial, onCreated }: { initial?: Workflow; onCreated: (id: st
         <aside className={styles.inspector}>
           <h2>Etapas do fluxo</h2>
           {editable && <div className={styles.inline}>
-            <Field label="Nova etapa">{props => <select className="input" {...props} value={addType} onChange={event => setAddType(event.target.value as NodeType)}>
+            <Field label="Nova etapa">{props => <ModernSelect className="input" {...props} value={addType} onValueChange={event => setAddType(event as NodeType)}>
               {Object.entries(typeLabel).map(([id, text]) => <option key={id} value={id}>{text}</option>)}
-            </select>}</Field>
+            </ModernSelect>}</Field>
             <Button size="icon" variant="outline" aria-label="Adicionar etapa" onClick={add} disabled={busy}><Plus size={17} /></Button>
           </div>}
-          <Field label="Etapa selecionada">{props => <select className="input" {...props} value={focus ?? ""} onChange={event => { setFocus(event.target.value); setTarget(""); }}>
+          <Field label="Etapa selecionada">{props => <ModernSelect className="input" {...props} value={focus ?? ""} onValueChange={event => { setFocus(event); setTarget(""); }}>
             <option value="">Selecione uma etapa</option>
             {nodes.map(node => <option key={node.id} value={node.id}>{typeLabel[node.data.type]}: {label(node.data)}</option>)}
-          </select>}</Field>
+          </ModernSelect>}</Field>
           {chosen && <>
-            <Field label="Regra">{props => <select className="input" {...props} disabled={!editable || busy} value={chosen.data.kind}
-              onChange={event => edit({ kind: event.target.value, days: event.target.value === "PAYABLE_DUE" ? 3 : undefined, amount: undefined })}>
+            <Field label="Regra">{props => <ModernSelect className="input" {...props} disabled={!editable || busy} value={chosen.data.kind}
+              onValueChange={event => edit({ kind: event, days: event === "PAYABLE_DUE" ? 3 : undefined, amount: undefined })}>
               {Object.entries(kinds[chosen.data.type]).map(([id, text]) => <option key={id} value={id}>{text}</option>)}
-            </select>}</Field>
+            </ModernSelect>}</Field>
             {chosen.data.kind === "PAYABLE_DUE" && <Field label="Dias antes do vencimento">{props =>
               <input className="input" {...props} disabled={!editable || busy} type="number" min={0} max={90} value={chosen.data.days ?? ""}
                 onChange={event => edit({ days: event.target.value ? Number(event.target.value) : null })} />}</Field>}
@@ -229,11 +230,11 @@ function Editor({ initial, onCreated }: { initial?: Workflow; onCreated: (id: st
               <input className="input" {...props} disabled={!editable || busy} type="number" min={0} step="0.01" value={chosen.data.amount ?? ""}
                 onChange={event => edit({ amount: event.target.value || null })} />}</Field>}
             {editable && chosen.data.type !== "end" && <>
-              {chosen.data.type === "condition" && <Field label="Saída">{props => <select className="input" {...props} value={branch}
-                onChange={event => setBranch(event.target.value as Branch)}><option value="YES">Sim</option><option value="NO">Não</option></select>}</Field>}
-              <Field label="Conectar à etapa">{props => <select className="input" {...props} value={target} onChange={event => setTarget(event.target.value)}>
+              {chosen.data.type === "condition" && <Field label="Saída">{props => <ModernSelect className="input" {...props} value={branch}
+                onValueChange={event => setBranch(event as Branch)}><option value="YES">Sim</option><option value="NO">Não</option></ModernSelect>}</Field>}
+              <Field label="Conectar à etapa">{props => <ModernSelect className="input" {...props} value={target} onValueChange={event => setTarget(event)}>
                 <option value="">Selecione o destino</option>{destinations.map(node => <option key={node.id} value={node.id}>{label(node.data)}</option>)}
-              </select>}</Field>
+              </ModernSelect>}</Field>
               <Button variant="outline" size="small" disabled={!target || busy}
                 onClick={() => connect({ source: chosen.id, target, sourceHandle: chosen.data.type === "condition" ? branch : null, targetHandle: null })}>Conectar</Button>
             </>}

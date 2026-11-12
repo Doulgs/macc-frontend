@@ -2,12 +2,16 @@
 
 import { useEffect, useState, type FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Tabs } from "radix-ui";
 import { Building2, Globe2, LockKeyhole, LogOut, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { api, errorMessage, errorStatus, getScoped, type Session } from "@/lib/api";
 import { BrandMark, useBranding } from "@/lib/branding";
+import { FilterPopover } from "@/components/ui/filter-popover";
+import { Field } from "@/components/ui/fields";
+import { SearchInput } from "@/components/ui/search-input";
 import { Button } from "@/components/ui/button";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/feedback";
 import { PageHeading } from "@/components/layout/page-heading";
@@ -92,19 +96,23 @@ export function PlatformScreen() {
         !grant ? <form className={styles.unlock} onSubmit={unlock}>
           <LockKeyhole size={23} aria-hidden /><h2>Confirme sua identidade</h2>
           <p>Digite o código de seis dígitos do seu aplicativo autenticador.</p>
-          <label>Código de verificação<input className="input" name="mfa-code" type="text" inputMode="numeric" autoComplete="one-time-code" maxLength={6}
-            value={code} onChange={event => setCode(event.target.value.replace(/[^0-9]/g, ""))} /></label>
+          <Field label="Código de verificação">{props => <div className="otp-input">
+            <input {...props} name="mfa-code" type="text" inputMode="numeric" autoComplete="one-time-code" maxLength={6}
+              value={code} onChange={event => setCode(event.target.value.replace(/[^0-9]/g, ""))} />
+            <div className="otp-slots" aria-hidden="true">{Array.from({ length: 6 }, (_, index) =>
+              <span key={index} data-active={index === Math.min(code.length, 5)}>{code[index] ?? "·"}</span>,
+            )}</div>
+          </div>}</Field>
           {error && <p className="field-error" role="alert">{error}</p>}
           <Button type="submit" disabled={code.length !== 6 || busy}><ShieldCheck size={16} /> Desbloquear console</Button>
-        </form> : <>
-          <nav className={styles.tabs} aria-label="Seções da plataforma">
-            <Button variant={section === "brands" ? "primary" : "outline"} aria-pressed={section === "brands"}
-              onClick={() => setSection("brands")}><Globe2 size={16} /> Marcas e domínios</Button>
-            <Button variant={section === "accounts" ? "primary" : "outline"} aria-pressed={section === "accounts"}
-              onClick={() => setSection("accounts")}><Building2 size={16} /> Contas e recursos</Button>
-          </nav>
-          {section === "brands" ? <Brands grant={grant} /> : <Accounts grant={grant} />}
-        </>}
+        </form> : <Tabs.Root value={section} onValueChange={value => setSection(value === "accounts" ? "accounts" : "brands")}>
+          <Tabs.List className="modern-tabs" aria-label="Seções da plataforma">
+            <Tabs.Trigger value="brands"><Globe2 size={16} /> Marcas e domínios</Tabs.Trigger>
+            <Tabs.Trigger value="accounts"><Building2 size={16} /> Contas e recursos</Tabs.Trigger>
+          </Tabs.List>
+          <Tabs.Content value="brands"><Brands grant={grant} /></Tabs.Content>
+          <Tabs.Content value="accounts"><Accounts grant={grant} /></Tabs.Content>
+        </Tabs.Root>}
     </main>
   </div>;
 }
@@ -200,8 +208,12 @@ function Accounts({ grant }: { grant: string }) {
   const selected = accounts.data?.find(account => account.id === selection) ?? accounts.data?.[0];
   const [search, setSearch] = useState("");
   return <div className={styles.split}>
-    <aside className={styles.panel}><h2>Contas</h2>
-      <label>Buscar<input className="input" value={search} onChange={event => setSearch(event.target.value)} placeholder="Nome ou identificador" /></label>
+    <aside className={styles.panel}>
+      <div className="panel-title"><h2>Contas</h2>
+        <FilterPopover count={search ? 1 : 0}>
+          <Field label="Buscar">{props => <SearchInput {...props} value={search} onChange={event => setSearch(event.target.value)} placeholder="Nome ou identificador" />}</Field>
+        </FilterPopover>
+      </div>
       {accounts.isPending ? <LoadingState rows={2} /> : accounts.isError ? <ErrorState error={accounts.error} retry={() => void accounts.refetch()} /> :
         <ul className={styles.list}>{accounts.data.filter(account => `${account.name} ${account.slug}`.toLowerCase().includes(search.toLowerCase())).map(account =>
           <li key={account.id}><button type="button" aria-pressed={selected?.id === account.id} onClick={() => setSelection(account.id)}>

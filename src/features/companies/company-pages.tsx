@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Building2, Check, Copy, MailPlus, Monitor, Moon, Plus, Sun } from "lucide-react";
@@ -11,6 +11,7 @@ import { PageHeading } from "@/components/layout/page-heading";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Field } from "@/components/ui/fields";
+import { ModernSelect } from "@/components/ui/modern-select";
 import { ErrorState, EmptyState, LoadingState } from "@/components/ui/feedback";
 import { api, companyHeaders, errorFields, errorMessage, normalizePage, type ApiPage, type ApiRow, type Company } from "@/lib/api";
 import { usePreferences } from "@/lib/preferences";
@@ -56,7 +57,7 @@ export function CompanyEditor({ company, onClose, onSave }: { company?: Company;
       {(Object.keys(fields) as (keyof typeof fields)[]).map(name => <Field key={name} label={fields[name]} error={form.formState.errors[name]?.message}
         hint={name === "timezone" ? "Ex.: America/Sao_Paulo" : undefined}>
         {props => name === "currency"
-          ? <select {...props} className="input" {...form.register(name)}><option value="BRL">Real brasileiro (BRL)</option></select>
+          ? <ModernSelect {...props} value="BRL"><option value="BRL">Real brasileiro (BRL)</option></ModernSelect>
           : <input {...props} className="input" maxLength={name === "timezone" ? 64 : 160} {...form.register(name)} />}
       </Field>)}
       {error && <p role="alert" className="inline-error">{error}</p>}
@@ -120,6 +121,7 @@ function InviteMember({ onClose }: { onClose: () => void }) {
   const [result, setResult] = useState<Invitation>();
   const [error, setError] = useState("");
   const form = useForm<z.infer<typeof invitationSchema>>({ resolver: zodResolver(invitationSchema), defaultValues: { email: "", role: "VIEWER" } });
+  const invitationRole = useWatch({ control: form.control, name: "role" });
   const submit = form.handleSubmit(async values => {
     setError("");
     try {
@@ -138,12 +140,12 @@ function InviteMember({ onClose }: { onClose: () => void }) {
     description={"O convite dá acesso ao workspace " + (company.tradeName || company.legalName) + "."}>
     {result ? <div className="form-stack">
       <Field label="Link de convite" hint={"Válido até " + dateLabel(result.expiresAt, company.timezone)}>{props => <input {...props} className="input" readOnly value={result.inviteUrl} onFocus={event => event.target.select()} />}</Field>
-      <Button onClick={() => void copy()}><Copy size={17} /> Copiar link</Button>
+      <div className="dialog-actions"><Button onClick={() => void copy()}><Copy size={17} /> Copiar link</Button></div>
     </div> : <form className="form-stack" onSubmit={submit} noValidate>
       <Field label="E-mail" error={form.formState.errors.email?.message}>{props => <input {...props} type="email" className="input" {...form.register("email")} />}</Field>
-      <Field label="Papel no workspace" error={form.formState.errors.role?.message}>{props => <select {...props} className="input" {...form.register("role")}>{roles.map(role => <option key={role.value} value={role.value}>{role.label}</option>)}</select>}</Field>
+      <Field label="Papel no workspace" error={form.formState.errors.role?.message}>{props => <ModernSelect {...props} value={invitationRole} onValueChange={value => form.setValue("role", value as z.infer<typeof invitationSchema>["role"])}>{roles.map(role => <option key={role.value} value={role.value}>{role.label}</option>)}</ModernSelect>}</Field>
       {error && <p className="inline-error" role="alert">{error}</p>}
-      <Button disabled={form.formState.isSubmitting}><MailPlus size={17} /> {form.formState.isSubmitting ? "Criando…" : "Criar convite"}</Button>
+      <div className="dialog-actions"><Button variant="outline" type="button" onClick={onClose} disabled={form.formState.isSubmitting}>Voltar</Button><Button disabled={form.formState.isSubmitting}><MailPlus size={17} /> {form.formState.isSubmitting ? "Criando…" : "Criar convite"}</Button></div>
     </form>}
   </Dialog>;
 }
@@ -189,9 +191,10 @@ export function TeamPage() {
     {invite && <InviteMember onClose={() => setInvite(false)} />}
     {editing && <Dialog open onOpenChange={() => setEditing(undefined)} title="Editar acesso" description="Altere o papel ou revogue o acesso a este workspace." busy={busy}>
       <form className="form-stack" onSubmit={change}>
-        <Field label="Papel">{props => <select {...props} className="input" name="role" defaultValue={editing.companyRole ?? editing.role}>{roles.map(role => <option key={role.value} value={role.value}>{role.label}</option>)}</select>}</Field>
-        <Field label="Acesso">{props => <select {...props} className="input" name="status" defaultValue={editing.status ?? "ACTIVE"}><option value="ACTIVE">Ativo</option><option value="REVOKED">Revogado</option></select>}</Field>
-        {error && <p className="inline-error" role="alert">{error}</p>}<Button disabled={busy}>Salvar acesso</Button>
+        <Field label="Papel">{props => <ModernSelect {...props} className="input" name="role" defaultValue={editing.companyRole ?? editing.role}>{roles.map(role => <option key={role.value} value={role.value}>{role.label}</option>)}</ModernSelect>}</Field>
+        <Field label="Acesso">{props => <ModernSelect {...props} className="input" name="status" defaultValue={editing.status ?? "ACTIVE"}><option value="ACTIVE">Ativo</option><option value="REVOKED">Revogado</option></ModernSelect>}</Field>
+        {error && <p className="inline-error" role="alert">{error}</p>}
+        <div className="dialog-actions"><Button variant="outline" type="button" onClick={() => setEditing(undefined)} disabled={busy}>Voltar</Button><Button disabled={busy}>Salvar acesso</Button></div>
       </form>
     </Dialog>}
   </>;

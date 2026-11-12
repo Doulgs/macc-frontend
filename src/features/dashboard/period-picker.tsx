@@ -1,9 +1,11 @@
 "use client";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { CalendarDays } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { FilterPopover } from "@/components/ui/filter-popover";
 import { Field } from "@/components/ui/fields";
+import { ModernSelect } from "@/components/ui/modern-select";
 import { civilDate, currentMonth } from "@/lib/utils";
 
 export type Period = { startDate: string; endDate: string };
@@ -23,10 +25,25 @@ export function resolvePeriod(query: Record<string, unknown>, timezone: string):
     ? { startDate, endDate } : currentMonth(timezone);
 }
 
-export function PeriodPicker({ initial, timezone, extra }: { initial: Period; timezone: string; extra?: Record<string, string> }) {
+export function PeriodFilters({ initial, timezone, extra, children }: {
+  initial: Period; timezone: string; extra?: { name: string; value: string };
+  children?: (value: string, onChange: (value: string) => void) => ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  return <FilterPopover open={open} onOpenChange={setOpen}>
+    {open && <PeriodForm initial={initial} timezone={timezone} extra={extra} onApply={() => setOpen(false)}>{children}</PeriodForm>}
+  </FilterPopover>;
+}
+
+function PeriodForm({ initial, timezone, extra, children, onApply }: {
+  initial: Period; timezone: string; extra?: { name: string; value: string }; onApply: () => void;
+  children?: (value: string, onChange: (value: string) => void) => ReactNode;
+}) {
   const router = useRouter();
   const pathname = usePathname();
   const [draft, setDraft] = useState(initial);
+  const [selection, setSelection] = useState(extra?.value ?? "");
+  const [preset, setPreset] = useState("");
   const [error, setError] = useState("");
   function apply(period: Period) {
     const { startDate, endDate } = period;
@@ -36,18 +53,21 @@ export function PeriodPicker({ initial, timezone, extra }: { initial: Period; ti
     }
     setDraft(period);
     setError("");
-    router.replace(pathname + "?" + new URLSearchParams({ ...extra, ...period }).toString(), { scroll: false });
+    router.replace(pathname + "?" + new URLSearchParams({ ...period, ...(extra && selection ? { [extra.name]: selection } : {}) }).toString(), { scroll: false });
+    onApply();
   }
   return <form className="period-picker" onSubmit={event => { event.preventDefault(); apply(draft); }}>
-    <Field label="Período rápido">{props => <select {...props} className="input" aria-label="Período rápido" value="" onChange={event => {
-      if (event.target.value === "month") apply(currentMonth(timezone));
-      if (event.target.value === "year") {
+    <Field label="Período rápido">{props => <ModernSelect {...props} className="input" aria-label="Período rápido" value={preset} onValueChange={event => {
+      setPreset(event);
+      if (event === "month") setDraft(currentMonth(timezone));
+      if (event === "year") {
         const year = civilDate(new Date(), timezone).slice(0, 4);
-        apply({ startDate: year + "-01-01", endDate: year + "-12-31" });
+        setDraft({ startDate: year + "-01-01", endDate: year + "-12-31" });
       }
-    }}><option value="">Personalizado</option><option value="month">Mês atual</option><option value="year">Ano atual</option></select>}</Field>
-    <Field label="Início">{props => <input {...props} className="input" type="date" required value={draft.startDate} onChange={event => setDraft({ ...draft, startDate: event.target.value })} />}</Field>
-    <Field label="Fim">{props => <input {...props} className="input" type="date" required value={draft.endDate} onChange={event => setDraft({ ...draft, endDate: event.target.value })} />}</Field>
+    }}><option value="">Personalizado</option><option value="month">Mês atual</option><option value="year">Ano atual</option></ModernSelect>}</Field>
+    <Field label="Início">{props => <input {...props} className="input" type="date" required value={draft.startDate} onChange={event => { setPreset(""); setDraft({ ...draft, startDate: event.target.value }); }} />}</Field>
+    <Field label="Fim">{props => <input {...props} className="input" type="date" required value={draft.endDate} onChange={event => { setPreset(""); setDraft({ ...draft, endDate: event.target.value }); }} />}</Field>
+    {children && <div className="period-extra">{children(selection, setSelection)}</div>}
     <Button variant="outline" size="small"><CalendarDays size={15} /> Aplicar</Button>
     {error && <small className="field-error" role="alert">{error}</small>}
   </form>;

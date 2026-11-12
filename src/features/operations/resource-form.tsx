@@ -7,6 +7,7 @@ import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Field } from "@/components/ui/fields";
+import { ModernSelect } from "@/components/ui/modern-select";
 import { api, companyHeaders, errorFields, errorMessage, normalizePage, type ApiPage, type ApiRow } from "@/lib/api";
 import { civilDate, currentMonth, decimalInput, money } from "@/lib/utils";
 import { useRefreshWorkspace, useScopedQuery, useWorkspace } from "@/lib/workspace";
@@ -33,9 +34,9 @@ export function ResourceField({ spec, prefix = "", value, error, onChange }: {
     {props => {
       const common = { ...props, className: "input", name, value: value ?? "", required: spec.required, onChange: (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => onChange(event.target.value) };
       if (spec.type === "select") return <>
-        <select {...common}><option value="">{lookup.isPending && spec.resource ? "Carregando…" : "Selecione"}</option>
+        <ModernSelect {...props} name={name} value={value ?? ""} onValueChange={onChange}><option value="">{lookup.isPending && spec.resource ? "Carregando…" : "Selecione"}</option>
           {renderedOptions.map(option => <option value={option.value} key={option.value}>{option.label}</option>)}
-        </select>
+        </ModernSelect>
         {spec.resource && (lookupPage > 0 || (page?.totalPages ?? 0) > 1) && <div className="table-actions">
           <Button type="button" variant="ghost" size="small" disabled={lookupPage === 0} onClick={() => setLookupPage(lookupPage - 1)}>Opções anteriores</Button>
           <Button type="button" variant="ghost" size="small" disabled={!page || lookupPage + 1 >= page.totalPages} onClick={() => setLookupPage(lookupPage + 1)}>Mais opções</Button>
