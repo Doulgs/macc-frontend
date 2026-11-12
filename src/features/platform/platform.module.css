@@ -1,0 +1,28 @@
+.root { min-height: 100vh; background: var(--background, #000611); color: var(--foreground, #d7e6f4); }
+.header { min-height: 68px; border-bottom: 1px solid var(--border, #315175); display: flex; gap: 1rem; align-items: center; justify-content: space-between; padding: .75rem clamp(1rem, 5vw, 3rem); }
+.main { max-width: 1100px; margin-inline: auto; padding: clamp(1rem, 5vw, 3rem); }
+.unlock, .panel { display: grid; gap: .8rem; padding: 1rem; align-content: start; border-radius: .8rem; border: 1px solid var(--border, #315175); background: var(--card, #001026); min-width: 0; }
+.unlock { max-width: 440px; margin: 1.5rem auto; padding: 1.5rem; }
+.unlock > svg { color: #76cef9; }
+.panel h2, .unlock h2 { font-size: 1rem; font-weight: 650; }
+.panel p, .unlock p { color: var(--muted-foreground, #a4bada); }
+.panel label, .unlock label { display: grid; gap: .3rem; font-size: .85rem; }
+.panel > :is(button, form button), .unlock > button { justify-self: start; }
+.tabs { display: flex; gap: .6rem; flex-wrap: wrap; margin-bottom: 1rem; }
+.split { display: grid; grid-template-columns: minmax(200px, 245px) minmax(0, 1fr); gap: 1rem; align-items: start; }
+.column { display: grid; gap: 1rem; }
+.list, .domains, .features { display: grid; list-style: none; gap: .35rem; padding: 0; margin: 0; }
+.list { max-height: 58vh; overflow: auto; }
+.list button { display: grid; gap: .15rem; text-align: start; width: 100%; padding: .55rem .7rem; border-radius: .45rem; border: 1px solid transparent; }
+.list button[aria-pressed="true"], .list button:hover { border-color: var(--border, #315175); background: #041d41; }
+.list small { color: var(--muted-foreground, #a4bada); overflow-wrap: anywhere; }
+.domains li { border-top: 1px solid var(--border, #315175); display: flex; gap: .55rem; flex-wrap: wrap; align-items: center; padding-block: .7rem; overflow-wrap: anywhere; }
+.domains span { color: #76cef9; font-size: .75rem; }
+.domains p { flex-basis: 100%; font-size: .85rem; }
+.domains > li > code { flex-basis: 100%; }
+.row { display: flex; align-items: end; gap: .5rem; flex-wrap: wrap; }
+.row label { flex: 1 1 160px; }
+.feature { display: grid; gap: .5rem; justify-items: start; padding-block: .75rem; border-top: 1px solid var(--border, #315175); }
+.feature label:has(input[type="checkbox"]) { display: flex; gap: .5rem; align-items: center; }
+.color { width: 3rem; height: 2.4rem; cursor: pointer; }
+@media (max-width: 760px) { .split { grid-template-columns: 1fr; } .list { max-height: 14rem; } }
