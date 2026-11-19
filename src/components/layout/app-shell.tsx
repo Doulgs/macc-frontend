@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -25,6 +25,8 @@ type NavItem = { label: string; href: string; icon: React.ElementType; permissio
 function visibleNavigation(can: (permission: string) => boolean, feature: (feature: string) => boolean) {
   return navigation.map(group => ({
     label: group.label,
+    icon: group.icon,
+    standalone: group.standalone,
     links: (group.links as readonly NavItem[]).filter(link => (!link.permission || can(link.permission)) && (!link.feature || feature(link.feature))),
   })).filter(group => group.links.length);
 }
@@ -164,15 +166,7 @@ function Frame({ children, company, logout }: { children: React.ReactNode; compa
       </div>
       <CompanySwitcher company={company} compact={compact} />
       <nav className="navigation" aria-label="Navegação principal">
-        {groups.map(group => <div className="nav-group" key={group.label}>
-          <p>{group.label}</p>
-          {group.links.map(({ label, href, icon: Icon }) => {
-            const active = pathname === href || pathname.startsWith(href + "/");
-            return <Link className={cn("nav-link", active && "nav-active")} title={label} key={href} href={href} aria-current={active ? "page" : undefined} onClick={() => setMobile(false)}>
-              <Icon size={18} aria-hidden="true" /><span>{label}</span>
-            </Link>;
-          })}
-        </div>)}
+        {groups.map(group => <NavigationModule key={group.label} group={group} pathname={pathname} compact={compact} onNavigate={() => setMobile(false)} />)}
       </nav>
       <div className="sidebar-footer">
         <span className="avatar">{initials}</span><span className="sidebar-person"><strong>{session.user.fullName}</strong><small>{session.user.email}</small></span>
@@ -222,5 +216,47 @@ function Frame({ children, company, logout }: { children: React.ReactNode; compa
         <Link href={item.href} key={item.href} onClick={() => setSearch(null)}>{item.label}</Link>,
       )}</div>
     </Dialog>
+  </div>;
+}
+
+function NavigationModule({ group, pathname, compact, onNavigate }: {
+  group: ReturnType<typeof visibleNavigation>[number];
+  pathname: string;
+  compact: boolean;
+  onNavigate: () => void;
+}) {
+  const moduleId = useId();
+  const activeLink = group.links.find(link => pathname === link.href || pathname.startsWith(link.href + "/"));
+  const [disclosure, setDisclosure] = useState<{ pathname: string; open: boolean }>();
+  const open = disclosure?.pathname === pathname ? disclosure.open : !!activeLink;
+  const Icon = group.icon;
+
+  function renderLink({ label, href, icon: LinkIcon }: NavItem) {
+    const active = activeLink?.href === href;
+    return <Link className={cn("nav-link", active && "nav-active")} title={label} key={href} href={href} aria-current={active ? "page" : undefined} onClick={onNavigate}>
+      <LinkIcon size={18} aria-hidden="true" /><span>{label}</span>
+      {active && <Check size={15} className="nav-check" aria-hidden="true" />}
+    </Link>;
+  }
+
+  if (group.standalone) return <div className="nav-direct">{group.links.map(renderLink)}</div>;
+
+  if (compact) return <DropdownMenu.Root>
+    <DropdownMenu.Trigger className={cn("nav-module-trigger nav-module-compact", activeLink && "nav-module-current")} aria-label={group.label} title={group.label}>
+      <Icon size={20} aria-hidden="true" />
+    </DropdownMenu.Trigger>
+    <DropdownMenu.Portal><DropdownMenu.Content className="dropdown-content" side="right" align="start" sideOffset={12}>
+      <DropdownMenu.Label className="dropdown-label">{group.label}</DropdownMenu.Label>
+      {group.links.map(({ href, label, icon: ItemIcon }) => <DropdownMenu.Item asChild className="dropdown-item" key={href}>
+        <Link href={href} aria-current={activeLink?.href === href ? "page" : undefined} onClick={onNavigate}><ItemIcon size={16} aria-hidden="true" />{label}{activeLink?.href === href && <Check size={14} aria-hidden="true" />}</Link>
+      </DropdownMenu.Item>)}
+    </DropdownMenu.Content></DropdownMenu.Portal>
+  </DropdownMenu.Root>;
+
+  return <div className={cn("nav-module", open && "nav-module-open", activeLink && "nav-module-current")}>
+    <button type="button" className="nav-module-trigger" aria-expanded={open} aria-controls={moduleId} onClick={() => setDisclosure({ pathname, open: !open })}>
+      <Icon size={20} aria-hidden="true" /><span>{group.label}</span><ChevronDown size={16} className="nav-module-chevron" aria-hidden="true" />
+    </button>
+    <div id={moduleId} className="nav-module-links" hidden={!open}>{group.links.map(renderLink)}</div>
   </div>;
 }

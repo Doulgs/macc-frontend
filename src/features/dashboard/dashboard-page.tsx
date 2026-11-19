@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 import { useState } from "react";
 import { useQueries } from "@tanstack/react-query";
 import Decimal from "decimal.js";
-import { ArrowDownLeft, ArrowDownRight, ArrowUpRight, CircleDollarSign, Landmark, Plus, Target, Wallet } from "lucide-react";
+import { ArrowDownLeft, ArrowDownRight, ArrowUpRight, TrendingDown, TrendingUp, CircleDollarSign, Wallet, Plus } from "lucide-react";
 import { PageHeading } from "@/components/layout/page-heading";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/fields";
@@ -17,6 +17,10 @@ import { EntityTable } from "@/features/operations/entity-table";
 import { resources } from "@/features/operations/definitions";
 import type { CashRow } from "./cash-chart";
 import { PeriodFilters, resolvePeriod } from "./period-picker";
+const OverviewAccountCharts = dynamic(() => import("./overview-charts").then(module => module.OverviewAccountCharts), { ssr: false, loading: () => <LoadingState rows={6} /> });
+const OverviewTransactionTypes = dynamic(() => import("./overview-charts").then(module => module.OverviewTransactionTypes), { ssr: false, loading: () => <LoadingState rows={5} /> });
+const OverviewUserRadar = dynamic(() => import("./overview-charts").then(module => module.OverviewUserRadar), { ssr: false, loading: () => <LoadingState rows={5} /> });
+const OverviewExpensePie = dynamic(() => import("./overview-charts").then(module => module.OverviewExpensePie), { ssr: false, loading: () => <LoadingState rows={6} /> });
 
 const CashChart = dynamic(() => import("./cash-chart"), { ssr: false, loading: () => <LoadingState rows={5} /> });
 type Summary = {
@@ -30,7 +34,6 @@ type Alerts = { overduePayables: number; overdueReceivables: number };
 const metrics = [
   { key: "incomeReceived", label: "Receitas recebidas", Icon: ArrowDownLeft, formula: "Entradas liquidadas no período, sem transferências." },
   { key: "expensePaid", label: "Despesas pagas", Icon: ArrowUpRight, formula: "Saídas liquidadas no período, sem transferências." },
-  { key: "netCashflow", label: "Resultado de caixa", Icon: CircleDollarSign, formula: "Receitas recebidas menos despesas pagas no período." },
 ] as const;
 
 function delta(current: string, previous?: string) {
@@ -42,14 +45,20 @@ function delta(current: string, previous?: string) {
   } catch { return null; }
 }
 
-function CashPanel({ params, projected = false }: { params: object; projected?: boolean }) {
+function CashPanel({ params, projected = false, className = "", compact = false }: { params: object; projected?: boolean; className?: string; compact?: boolean }) {
   const { company } = useWorkspace();
   const result = useScopedQuery<CashRow[]>("/dashboard/cashflow", params);
   const hasMovements = result.data?.some(row => [row.income, row.expense, ...(projected ? [row.projectedIncome, row.projectedExpense] : [])].some(value => Number(value) !== 0));
-  return <section className="panel">
-    <div className="panel-title"><div><h2>{projected ? "Realizado e projetado" : "Receitas e despesas"}</h2><p>{projected ? "Valores liquidados e obrigações por vencimento" : "Movimentações confirmadas no período"}</p></div></div>
+  return <section className={`panel ${className}`}>
+    <div className="panel-title cash-panel-heading">
+      <div className="cash-panel-heading-row">
+        <h2>{projected ? "Realizado e projetado" : "Receitas e despesas"}</h2>
+
+      </div>
+      <p>{projected ? "Valores liquidados e obrigações por vencimento" : "Evolução dos valores liquidados no período"}</p>
+    </div>
     {result.isPending ? <LoadingState rows={5} /> : result.isError ? <ErrorState error={result.error} retry={() => void result.refetch()} />
-      : hasMovements ? <CashChart rows={result.data} currency={company.currency} projected={projected} /> : <EmptyState title="Sem movimentações no período" detail="Registre lançamentos ou selecione outras datas." />}
+      : hasMovements ? <CashChart rows={result.data} currency={company.currency} projected={projected} view="compare" bars={compact} /> : <EmptyState title="Sem movimentações no período" detail="Registre lançamentos ou selecione outras datas." />}
   </section>;
 }
 
@@ -70,23 +79,32 @@ export function DashboardPage({ query, cashflow = false }: { query: Record<strin
   const params = { ...period, ...(accountId ? { accountId } : {}) };
   const financial = can("financial.read") && feature("FINANCIAL_CORE");
   const commercial = can("sales.read") && feature("SALES");
-  const kpis = [...metrics, commercial
-    ? { key: "confirmedSales" as const, label: "Vendas confirmadas", Icon: Target, formula: "Total das vendas confirmadas no período." }
-    : { key: "openReceivables" as const, label: "Valores a receber", Icon: Target, formula: "Total das contas a receber em aberto." }];
-  const budget = can("budget.read") && feature("BUDGETS");
   const allowed = can("dashboard.read") && (cashflow ? financial : financial || commercial);
   const summary = useScopedQuery<Summary>("/dashboard/summary", params, { enabled: allowed && !cashflow });
   const categories = useScopedQuery<Category[]>("/dashboard/categories", params, { enabled: financial && !cashflow });
   const alerts = useScopedQuery<Alerts>("/dashboard/alerts", params, { enabled: financial && !cashflow });
-  const recent = useScopedQuery<ApiPage<ApiRow> | ApiRow[]>("/transactions", { page: 0, size: 5, sort: "effectiveDate,desc", ...period, ...(accountId ? { financialAccountId: accountId } : {}) }, { enabled: financial && !cashflow });
-  const recentSales = useScopedQuery<ApiPage<ApiRow> | ApiRow[]>("/sales", { page: 0, size: 5, ...period }, { enabled: commercial && !cashflow });
-  const recentBudgets = useScopedQuery<ApiPage<ApiRow> | ApiRow[]>("/budgets", { page: 0, size: 5, status: "ACTIVE" }, { enabled: budget && !cashflow });
+  const recentSales = useScopedQuery<ApiPage<ApiRow> | ApiRow[]>("/sales", { page: 0, size: 5, ...period }, { enabled: commercial && !financial && !cashflow });
+
   const data = summary.data;
-  const list = recent.data ? normalizePage(recent.data).items : [];
   const salesList = recentSales.data ? normalizePage(recentSales.data).items : [];
-  const budgetsList = recentBudgets.data ? normalizePage(recentBudgets.data).items : [];
   const expenseCategories = (categories.data ?? []).filter(category => Number(category.expense) > 0).sort((a, b) => Number(b.expense) - Number(a.expense));
-  const maxExpense = Number(expenseCategories[0]?.expense ?? 1);
+  function renderMetric({ key, label, Icon, formula }: (typeof metrics)[number]) {
+    const change = data ? delta(data[key], data.previous?.[key]) : null;
+    const TrendIcon = change !== null && change < 0 ? TrendingDown : TrendingUp;
+    const favorable = change !== null && (key === "expensePaid" ? change < 0 : change > 0);
+    return <article className={`panel kpi dashboard-metric-${key}`} key={key}>
+      <div className="kpi-top"><span title={formula}>{label}</span><span className="metric-icon"><Icon size={19} aria-hidden="true" /></span></div>
+      {summary.isPending ? <LoadingState rows={2} /> : summary.isError ? <ErrorState error={summary.error} retry={() => void summary.refetch()} /> : <>
+        <div className="metric-value-row"><strong>{money(data?.[key], company.currency)}</strong>
+
+        </div>
+        <small className={change === null || change === 0 ? "metric-comparison" : `metric-comparison ${favorable ? "metric-favorable" : "metric-unfavorable"}`}>
+          {change !== null && change !== 0 && <TrendIcon size={13} aria-hidden="true" />}
+          {change === null ? "No período selecionado" : (change > 0 ? "+" : "") + change.toLocaleString("pt-BR") + "% vs. período anterior"}
+        </small>
+      </>}
+    </article>;
+  }
   return <>
     <PageHeading eyebrow={cashflow ? "Financeiro" : "Visão geral"} title={cashflow ? "Fluxo de caixa" : `Olá, ${session.user.fullName.trim().split(/\s+/)[0]}`}
       subtitle={cashflow ? "Compare o que já entrou ou saiu com os próximos vencimentos." : (company.tradeName || company.legalName) + " · " + dateLabel(period.startDate) + " a " + dateLabel(period.endDate)}
@@ -105,72 +123,53 @@ export function DashboardPage({ query, cashflow = false }: { query: Record<strin
         {summary.isPending ? <LoadingState rows={2} /> : summary.isError ? <ErrorState error={summary.error} retry={() => void summary.refetch()} /> :
           <p className="commercial-value">{money(summary.data.confirmedSales, company.currency)}</p>}
       </section>}
-      {!cashflow && financial && <div className="dashboard-overview">
-        <section className="panel balance-panel">
-          <div className="panel-title"><h2>Saldo disponível</h2><Wallet size={20} aria-hidden /></div>
-          {summary.isPending ? <LoadingState rows={2} /> : summary.isError ? <ErrorState error={summary.error} /> : <>
-            <strong className="balance-value">{money(data?.currentBalance, company.currency)}</strong>
-            <div className="balance-actions">
-              {can("transfers.create") && <Button asChild><Link href="/financeiro/contas?novo=transfer">Transferir</Link></Button>}
-              <Button asChild variant="outline"><Link href="/financeiro/contas">Ver contas</Link></Button>
+      <div className="dashboard-container">
+        {cashflow ? <CashPanel params={params} projected /> : <div className={financial ? "dashboard-bento" : "list-stack"}>
+          {financial && <>
+            <div className="overview-kpis">
+              <article className="panel kpi overview-balance">
+                <div className="kpi-top"><Link href="/financeiro/contas">Saldo disponível</Link><span className="metric-icon"><Wallet size={19} aria-hidden="true" /></span></div>
+                {summary.isPending ? <LoadingState rows={2} /> : summary.isError ? <ErrorState error={summary.error} retry={() => void summary.refetch()} /> : <>
+                  <strong>{money(data?.currentBalance, company.currency)}</strong>
+                  <small>Saldo consolidado · {company.currency}</small>
+                </>}
+              </article>
+              {metrics.map(renderMetric)}
+              {([['openReceivables', 'A receber', '/financeiro/a-receber', ArrowDownLeft, alerts.data?.overdueReceivables], ['openPayables', 'A pagar', '/financeiro/a-pagar', ArrowUpRight, alerts.data?.overduePayables]] as const).map(([key, label, href, Icon, overdue]) =>
+                <article className="panel kpi" key={key}>
+                  <div className="kpi-top"><Link href={href}>{label}</Link><span className="metric-icon"><Icon size={19} aria-hidden="true" /></span></div>
+                  {summary.isPending || alerts.isPending ? <LoadingState rows={2} /> : summary.isError || alerts.isError ? <ErrorState error={summary.error ?? alerts.error} /> : <>
+                    <strong>{money(data?.[key], company.currency)}</strong>
+                    <small>{overdue ? `${overdue} ${overdue === 1 ? "conta vencida" : "contas vencidas"}` : "Nenhuma conta vencida"}</small>
+                  </>}
+                </article>,
+              )}
             </div>
-            <div className="balance-accounts">
-              <div className="balance-accounts-heading"><strong>Contas financeiras</strong><small>{data?.balances?.length ?? 0} no período</small></div>
-              {data?.balances?.length ? <ul>{data.balances.slice(0, 3).map(account => <li key={account.id}><Link href={`/financeiro/contas/${account.id}`}><Landmark size={15} /><span>{account.name}</span><strong>{money(account.balance, company.currency)}</strong></Link></li>)}</ul>
-                : <EmptyState title="Nenhuma conta financeira" />}
-            </div>
+            <OverviewAccountCharts params={params} accounts={data?.balances} accountsError={summary.error}>
+              {({ area, radar }) => <>
+                <div className="overview-chart-row">
+                  {area}
+                  <OverviewTransactionTypes params={params} />
+                </div>
+                <div className="overview-bottom-row">
+                  <section className="panel overview-expenses">
+                <div className="panel-title"><div><h2>Despesas por categoria</h2><p>Participação no total de despesas liquidadas</p></div></div>
+                {categories.isPending ? <LoadingState rows={5} /> : categories.isError ? <ErrorState error={categories.error} retry={() => void categories.refetch()} /> : !expenseCategories.length ? <EmptyState title="Sem despesas classificadas" /> : <OverviewExpensePie categories={expenseCategories} />}
+              </section>
+                  {radar}
+                  <OverviewUserRadar params={params} />
+                </div>
+              </>}
+            </OverviewAccountCharts>
+
           </>}
-        </section>
-        {summary.isPending ? <div className="kpi-grid">{kpis.map(item => <div className="panel" key={item.key}><LoadingState rows={2} /></div>)}</div> :
-          summary.isError ? <ErrorState error={summary.error} retry={() => void summary.refetch()} /> : <div className="kpi-grid">{kpis.map(({ key, label, Icon, formula }) => {
-            const change = delta(summary.data[key], summary.data.previous?.[key]);
-            return <article className="panel kpi" key={key}>
-              <div className="kpi-top"><span title={formula}>{label}</span><Icon size={19} aria-hidden="true" /></div>
-              <strong>{money(summary.data[key], summary.data.currency)}</strong>
-              <small>{change === null ? "No período selecionado" : (change > 0 ? "+" : "") + change.toLocaleString("pt-BR") + "% vs. período anterior"}</small>
-            </article>;
-          })}</div>}
-        <CashPanel params={params} />
-      </div>}
-      {cashflow ? <CashPanel params={params} projected /> : <>
-        <div className={financial ? "dashboard-layout" : "list-stack"}>
-          <div className="list-stack activity-stack">
-            {financial && <section className="panel">
-              <div className="panel-title"><h2>Últimos lançamentos</h2><Button asChild size="small" variant="ghost"><Link href="/financeiro/transacoes">Ver transações</Link></Button></div>
-              {recent.isPending ? <LoadingState rows={3} /> : recent.isError ? <ErrorState error={recent.error} retry={() => void recent.refetch()} /> :
-                list.length ? <EntityTable rows={list} columns={resources.transactions.columns} detailRoute="/financeiro/transacoes" /> : <EmptyState title="Sem lançamentos neste período" />}
-            </section>}
-            {commercial && <section className="panel">
+          {commercial && !financial && <section className="panel dashboard-sales">
               <div className="panel-title"><h2>Últimas vendas</h2><Button asChild size="small" variant="ghost"><Link href="/vendas">Ver vendas</Link></Button></div>
               {recentSales.isPending ? <LoadingState rows={3} /> : recentSales.isError ? <ErrorState error={recentSales.error} retry={() => void recentSales.refetch()} /> :
                 salesList.length ? <EntityTable rows={salesList} columns={resources.sales.columns} detailRoute="/vendas" /> : <EmptyState title="Sem vendas neste período" />}
             </section>}
-          </div>
-          {financial && <div className="list-stack insights-stack">
-            <section className="panel">
-              <div className="panel-title"><div><h2>Despesas por categoria</h2><p>Participação entre os gastos pagos</p></div><Target size={20} aria-hidden="true" /></div>
-              {categories.isPending ? <LoadingState rows={3} /> : categories.isError ? <ErrorState error={categories.error} retry={() => void categories.refetch()} /> :
-                !expenseCategories.length ? <EmptyState title="Sem despesas classificadas" /> : <ul className="category-bars">{expenseCategories.slice(0, 6).map(category =>
-                  <li key={category.categoryId ?? category.name}><div><span>{category.name}</span><strong>{money(category.expense, company.currency)}</strong></div>
-                    <div className="progress-track"><span style={{ width: Math.min(100, Number(category.expense) / maxExpense * 100) + "%" }} /></div></li>,
-                )}</ul>}
-            </section>
-            <section className="panel">
-              <div className="panel-title"><h2>Vencimentos e vendas</h2></div>
-              {summary.isPending || alerts.isPending ? <LoadingState rows={3} /> : <ul className="metric-list">
-                <li><div><Link href="/financeiro/a-receber">A receber</Link><small>{alerts.data ? alerts.data.overdueReceivables + (alerts.data.overdueReceivables === 1 ? " vencida" : " vencidas") : ""}</small></div><strong>{money(data?.openReceivables, company.currency)}</strong></li>
-                <li><div><Link href="/financeiro/a-pagar">A pagar</Link><small>{alerts.data ? alerts.data.overduePayables + (alerts.data.overduePayables === 1 ? " vencida" : " vencidas") : ""}</small></div><strong>{money(data?.openPayables, company.currency)}</strong></li>
-                {commercial && <li><Link href="/vendas">Vendas confirmadas</Link><strong>{money(data?.confirmedSales, company.currency)}</strong></li>}
-              </ul>}
-            </section>
-            {budget && <section className="panel"><div className="panel-title"><h2>Orçamentos ativos</h2><Button asChild variant="ghost" size="small"><Link href="/orcamentos">Ver todos</Link></Button></div>
-              {recentBudgets.isPending ? <LoadingState rows={2} /> : recentBudgets.isError ? <ErrorState error={recentBudgets.error} /> :
-                budgetsList.length ? <ul className="metric-list">{budgetsList.map(item => <li key={item.id}><Link href={"/orcamentos/" + item.id}>{String(item.name)}</Link><small>{dateLabel(item.periodEnd)}</small></li>)}</ul> :
-                  <EmptyState title="Sem orçamentos ativos" />}
-            </section>}
-          </div>}
-        </div>
-      </>}
+        </div>}
+      </div>
     </>}
   </>;
 }
